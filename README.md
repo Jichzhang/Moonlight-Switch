@@ -22,12 +22,16 @@ To learn more about that you can take a look at [Sys-Clk homebrew](https://githu
 I DO NOT RESPOSIBLE FOR ANY DAMAGE TO YOUR CONSOLE IF ANYTHING WILL GO WRONG! I am using 4IFIR by myself and not find any issue, but everything possible. So think by you own head and be responsible for what you do with your devices!
 
 # Installing
+## Switch
 1. Download latest Moonlight-Switch [release](https://github.com/XITRIX/Moonlight-Switch/releases).
 2. Put Moonlight.nro to sdcard:/switch/Moonlight-Switch;
 3. Launch hbmenu over *Title Redirection* (for FULL RAM access);
 4. Launch moonlight.
 
 Or download it from [HB App Store](https://apps.fortheusers.org/switch/Moonlight-Switch)
+
+## IOS
+Accept [invite for TestFlight](https://testflight.apple.com/join/P9EX5vQ5) and download app from there
 
 # Discord
 Feel free to join [Moonlight discord server](https://discord.gg/fmtcVPzaG4), you will find me there in "switch-help" channel
