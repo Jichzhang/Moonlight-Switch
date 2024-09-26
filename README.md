@@ -30,7 +30,7 @@ I DO NOT RESPOSIBLE FOR ANY DAMAGE TO YOUR CONSOLE IF ANYTHING WILL GO WRONG! I 
 
 Or download it from [HB App Store](https://apps.fortheusers.org/switch/Moonlight-Switch)
 
-## IOS
+## iOS, tvOS and macOS
 Accept [invite for TestFlight](https://testflight.apple.com/join/P9EX5vQ5) and download app from there
 
 # Discord
