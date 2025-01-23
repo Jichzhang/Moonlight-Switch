@@ -15,17 +15,33 @@ KeyboardKeys NUM_BUTTONS[] = {
     VK_F12,    VK_OEM_3,      VK_KEY_1,     VK_KEY_2,    VK_KEY_3, VK_KEY_4,
     VK_KEY_5,  VK_KEY_6,      VK_KEY_7,     VK_KEY_8,    VK_KEY_9, VK_KEY_0,
     VK_OEM_5,  VK_OEM_PERIOD, VK_OEM_COMMA, VK_OEM_1,    VK_OEM_2, VK_OEM_7,
-    VK_OEM_4,  VK_OEM_6,      VK_OEM_MINUS, VK_OEM_PLUS,
+    VK_OEM_4,  VK_OEM_6,      VK_OEM_MINUS, VK_OEM_PLUS, VK_KP_7,  VK_KP_8,
+    VK_KP_9,   VK_KP_4,       VK_KP_5,      VK_KP_6,     VK_KP_1,  VK_KP_2,
+    VK_KP_3,
 };
 
 void KeyboardView::createNumpadLayout() {
     clearViews();
     keyboardLangLock = 0;
 
-    Box* firstRow = new Box(Axis::ROW);
-    addView(firstRow);
+    Box* container = new Box(Axis::ROW);
+    addView(container);
 
-    for (int i = 0; i < 13; i++) {
+    Box* leftCol = new Box(Axis::COLUMN);
+    Box* rightCol = new Box(Axis::COLUMN);
+    leftCol->setAlignItems(AlignItems::CENTER);
+    leftCol->setJustifyContent(JustifyContent::CENTER);
+    leftCol->setMargins(0, 10, 0, 0);
+    rightCol->setAlignItems(AlignItems::CENTER);
+    rightCol->setJustifyContent(JustifyContent::CENTER);
+    container->addView(leftCol);
+    container->addView(rightCol);
+    
+    Box* firstRow = new Box(Axis::ROW);
+    leftCol->addView(firstRow);
+    
+    for (int i = 0; i < 13; i++)
+    {
         ButtonView* button = new ButtonView(this);
         button->setKey(NUM_BUTTONS[i]);
         button->setMargins(4, 4, 4, 4);
@@ -34,9 +50,10 @@ void KeyboardView::createNumpadLayout() {
     }
 
     Box* secondRow = new Box(Axis::ROW);
-    addView(secondRow);
-
-    for (int i = 13; i < 25; i++) {
+    leftCol->addView(secondRow);
+    
+    for (int i = 13; i < 25; i++)
+    {
         ButtonView* button = new ButtonView(this);
         button->setKey(NUM_BUTTONS[i]);
         button->setMargins(4, 4, 4, 4);
@@ -45,8 +62,8 @@ void KeyboardView::createNumpadLayout() {
     }
 
     Box* thirdRow = new Box(Axis::ROW);
-    addView(thirdRow);
-
+    leftCol->addView(thirdRow);
+    
     ButtonView* lshiftButton = new ButtonView(this);
     lshiftButton->setKey(VK_RSHIFT);
     lshiftButton->triggerType = true;
@@ -72,8 +89,8 @@ void KeyboardView::createNumpadLayout() {
     thirdRow->addView(deleteButton);
 
     Box* fourthRow = new Box(Axis::ROW);
-    addView(fourthRow);
-
+    leftCol->addView(fourthRow);
+    
     ButtonView* altButton = new ButtonView(this);
     altButton->charLabel->setText("ABC");
     altButton->charLabel->setFontSize(21);
@@ -117,4 +134,39 @@ void KeyboardView::createNumpadLayout() {
     returnButton->setMargins(4, 4, 4, 4);
     returnButton->setWidth(120);
     fourthRow->addView(returnButton);
+
+    for (int i = 34; i < 42; i += 3)
+    {
+        Box* row = new Box(Axis::ROW);
+        rightCol->addView(row);
+        for (int j = i; j < i + 3; j++)
+        {
+            ButtonView* button = new ButtonView(this);
+            button->setKey(NUM_BUTTONS[j]);
+            button->setMargins(4, 4, 4, 4);
+            button->setWidth(73.7f);
+            row->addView(button);
+        }
+    }
+
+    Box* rightFourthRow = new Box(Axis::ROW);
+    rightCol->addView(rightFourthRow);
+
+    ButtonView* dashButton = new ButtonView(this);
+    dashButton->setKey(VK_OEM_8);
+    dashButton->setMargins(4, 4, 4, 4);
+    dashButton->setWidth(73.7f);
+    rightFourthRow->addView(dashButton);
+
+    ButtonView* button0 = new ButtonView(this);
+    button0->setKey(VK_KP_0);
+    button0->setMargins(4, 4, 4, 4);
+    button0->setWidth(73.7f);
+    rightFourthRow->addView(button0);
+
+    ButtonView* equalsButton = new ButtonView(this);
+    equalsButton->setKey(VK_OEM_9);
+    equalsButton->setMargins(4, 4, 4, 4);
+    equalsButton->setWidth(73.7f);
+    rightFourthRow->addView(equalsButton);
 }

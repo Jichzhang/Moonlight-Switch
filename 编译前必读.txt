@@ -1,0 +1,6 @@
+E:\project\switch\Moonlight-Switch\build\switch\extern
+删除此文件夹下所有文件
+
+cmake -B build/switch -DPLATFORM_SWITCH=ON
+
+make -C build/switch Moonlight.nro -j8
