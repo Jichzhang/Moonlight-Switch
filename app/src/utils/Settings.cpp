@@ -7,6 +7,7 @@
 #include <sys/stat.h>
 
 using namespace brls;
+using namespace brls::literals;
 
 #ifdef _WIN32
 static int mkdir(const char* dir, mode_t mode) {
@@ -17,6 +18,17 @@ static int mkdir(const char* dir, mode_t mode) {
 #ifndef PATH_MAX
 #define PATH_MAX 1024
 #endif
+
+std::string getVideoCodecName(VideoCodec codec) {
+    switch (codec) {
+        case H264:
+            return "settings/h264"_i18n;
+        case H265:
+            return "settings/h265"_i18n;
+        case AV1:
+            return "settings/av1"_i18n;
+    }
+}
 
 static int mkdirtree(const char* directory) {
     char buffer[PATH_MAX];
@@ -240,7 +252,11 @@ void Settings::load() {
                     m_bitrate = (int)json_integer_value(bitrate);
                 }
             }
-            
+
+            if (json_t* enable_hdr = json_object_get(settings, "enable_hdr")) {
+                m_enable_hdr = json_typeof(enable_hdr) == JSON_TRUE;
+            }
+
             if (json_t* click_by_tap = json_object_get(settings, "click_by_tap")) {
                 m_click_by_tap = json_typeof(click_by_tap) == JSON_TRUE;
             }
@@ -273,10 +289,6 @@ void Settings::load() {
 
             if (json_t* swap_joycon_stick_to_dpad = json_object_get(settings, "swap_joycon_stick_to_dpad")) {
                 m_swap_joycon_stick_to_dpad = json_typeof(swap_joycon_stick_to_dpad) == JSON_TRUE;
-            }
-
-            if (json_t* swap_game_keys = json_object_get(settings, "swap_game_keys")) {
-                m_swap_game_keys = json_typeof(swap_game_keys) == JSON_TRUE;
             }
 
             if (json_t* touchscreen_mouse_mode = json_object_get(settings, "touchscreen_mouse_mode")) {
@@ -336,7 +348,25 @@ void Settings::load() {
                     m_keyboard_type = (KeyboardType)json_integer_value(keyboard_type);
                 }
             }
-            
+
+            if (json_t* keyboard_fingers = json_object_get(settings, "keyboard_fingers")) {
+                if (json_typeof(keyboard_fingers) == JSON_INTEGER) {
+                    m_keyboard_fingers = json_integer_value(keyboard_fingers);
+                }
+            }
+
+            if (json_t* overlay_system_button = json_object_get(settings, "overlay_system_button")) {
+                if (json_typeof(overlay_system_button) == JSON_INTEGER) {
+                    m_overlay_system_button = (ButtonOverrideType) json_integer_value(overlay_system_button);
+                }
+            }
+
+            if (json_t* guide_system_button = json_object_get(settings, "guide_system_button")) {
+                if (json_typeof(guide_system_button) == JSON_INTEGER) {
+                    m_guide_system_button = (ButtonOverrideType) json_integer_value(guide_system_button);
+                }
+            }
+
             if (json_t* buttons = json_object_get(settings, "overlay_buttons")) {
                 m_overlay_options.buttons.clear();
                 size_t size = json_array_size(buttons);
@@ -447,6 +477,7 @@ void Settings::save() {
             json_object_set_new(settings, "audio_backend", json_integer(m_audio_backend));
             json_object_set_new(settings, "bitrate", json_integer(m_bitrate));
             json_object_set_new(settings, "decoder_threads", json_integer(m_decoder_threads));
+            json_object_set_new(settings, "enable_hdr", m_enable_hdr ? json_true() : json_false());
             json_object_set_new(settings, "click_by_tap", m_click_by_tap ? json_true() : json_false());
             json_object_set_new(settings, "use_hw_decoding", m_use_hw_decoding ? json_true() : json_false());
             json_object_set_new(settings, "sops", m_sops ? json_true() : json_false());
@@ -454,7 +485,6 @@ void Settings::save() {
             json_object_set_new(settings, "write_log", m_write_log ? json_true() : json_false());
             json_object_set_new(settings, "swap_ui_keys", m_swap_ui_keys ? json_true() : json_false());
             json_object_set_new(settings, "swap_joycon_stick_to_dpad", m_swap_joycon_stick_to_dpad ? json_true() : json_false());
-            json_object_set_new(settings, "swap_game_keys", m_swap_game_keys ? json_true() : json_false());
             json_object_set_new(settings, "touchscreen_mouse_mode", m_touchscreen_mouse_mode ? json_true() : json_false());
             json_object_set_new(settings, "swap_mouse_keys", m_swap_mouse_keys ? json_true() : json_false());
             json_object_set_new(settings, "swap_mouse_scroll", m_swap_mouse_scroll ? json_true() : json_false());
@@ -466,7 +496,10 @@ void Settings::save() {
             json_object_set_new(settings, "rumble_force", json_integer(m_rumble_force));
             json_object_set_new(settings, "current_mapping_layout", json_integer(m_current_mapping_layout));
             json_object_set_new(settings, "keyboard_type", json_integer(m_keyboard_type));
-            
+            json_object_set_new(settings, "keyboard_fingers", json_integer(m_keyboard_fingers));
+            json_object_set_new(settings, "overlay_system_button", json_integer((int)m_overlay_system_button));
+            json_object_set_new(settings, "guide_system_button", json_integer((int)m_guide_system_button));
+
             if (json_t* overlayButtons = json_array()) {
                 for (auto button: m_overlay_options.buttons) {
                     json_array_append_new(overlayButtons, json_integer(button));

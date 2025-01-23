@@ -8,6 +8,7 @@
 #pragma once
 
 #include <borealis.hpp>
+#include <map>
 
 enum KeyboardKeys
 {
@@ -26,6 +27,7 @@ enum KeyboardKeys
 struct KeyboardLocale {
     std::string name;
     std::string localization[_VK_KEY_MAX][2];
+    std::map<KeyboardKeys, KeyboardKeys> keyMapper;
 };
 
 struct KeyboardState {
@@ -57,6 +59,7 @@ class ButtonView : public brls::Box {
     bool focusJustGained = false;
 
     void applyTitle();
+    KeyboardLocale getCurrentLocale();
     KeyboardView* keyboardView;
 };
 

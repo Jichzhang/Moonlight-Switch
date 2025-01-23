@@ -44,16 +44,22 @@ int SDLAudioRenderer::init(int audio_configuration,
     want.freq = opus_config->sampleRate;
     want.format = AUDIO_S16LSB;
     want.channels = opus_config->channelCount;
+
+    // Latest SDL2 Switch port broke audio for lower asmples
+#if defined(PLATFORM_SWITCH)
+    want.samples = 4096;
+#else
     want.samples = std::max(480, opus_config->samplesPerFrame); //1024;
+#endif
 
     dev =
-        SDL_OpenAudioDevice(nullptr, 0, &want, &have, SDL_AUDIO_ALLOW_ANY_CHANGE);
+        SDL_OpenAudioDevice(nullptr, 0, &want, &have, 0);
     if (dev == 0) {
-        printf("Failed to open audio: %s\n", SDL_GetError());
+        brls::Logger::error("Failed to open audio: %s\n", SDL_GetError());
         return -1;
     } else {
         if (have.format != want.format) // we let this one thing change.
-            printf("We didn't get requested audio format.\n");
+            brls::Logger::error("We didn't get requested audio format.\n");
         SDL_PauseAudioDevice(dev, 0); // start audio playing.
     }
 
@@ -76,19 +82,28 @@ void SDLAudioRenderer::decode_and_play_sample(char* sample_data,
     if (decodeLen <= 0) { 
         printf("Opus error from decode: %d\n", decodeLen);
         return;
-     }
+    }
+
+    if (LiGetPendingAudioDuration() > 30) {
+        return;
+    }
 
     for (short & i : pcmBuffer) {
         int scale = (int)((double)i * (Settings::instance().get_volume() / 100.0));
         i = (short) std::min(SHRT_MAX, std::max(SHRT_MIN, scale));
     }
 
-    if (SDL_GetQueuedAudioSize(dev) > 16000) {
+#if defined(PLATFORM_SWITCH)
+    int bufferOverflow = 24000;
+#else
+    int bufferOverflow = 16000;
+#endif
+
+    if (SDL_GetQueuedAudioSize(dev) > bufferOverflow) {
         // clear audio queue to avoid big audio delay
-        // average values are close to 16000 bytes
+        // average values are close to bufferOverflow bytes
         SDL_ClearQueuedAudio(this->dev);
     }
-
     SDL_QueueAudio(dev, pcmBuffer,
                     decodeLen * channelCount * sizeof(short));
 }

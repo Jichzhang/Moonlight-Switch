@@ -136,11 +136,7 @@ void ButtonView::onFocusLost() {
     }
 }
 
-void ButtonView::applyTitle() {
-    if (dummy)
-        return;
-
-    bool shifted = keysState[VK_RSHIFT];
+KeyboardLocale ButtonView::getCurrentLocale() {
     int selectedLang = keyboardView->keyboardLangLock != -1
                            ? keyboardView->keyboardLangLock
                            : Settings::instance().get_keyboard_locale();
@@ -148,11 +144,27 @@ void ButtonView::applyTitle() {
         Settings::instance().set_keyboard_locale(0);
         selectedLang = 0;
     }
-    charLabel->setText(
-        KeyboardView::getLocales()[selectedLang].localization[key][shifted]);
+
+    return KeyboardView::getLocales()[selectedLang];
+}
+
+void ButtonView::applyTitle() {
+    if (dummy)
+        return;
+
+    // We need to map only key title, virtual keys are constant (which could be a bug in Sunshine)
+    KeyboardKeys mappedKey = key;
+    auto selectedLang = getCurrentLocale();
+    if (selectedLang.keyMapper.contains(key)) {
+        mappedKey = selectedLang.keyMapper[key];
+    }
+
+    bool shifted = keysState[VK_RSHIFT];
+    charLabel->setText(selectedLang.localization[mappedKey][shifted]);
 }
 
 void ButtonView::setKey(KeyboardKeys key) {
+
     this->dummy = false;
     this->key = key;
     this->applyTitle();

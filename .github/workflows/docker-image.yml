@@ -13,7 +13,8 @@ jobs:
     runs-on: ubuntu-latest
     
     container:
-      image: docker://devkitpro/devkita64:20240120
+      # image: docker://devkitpro/devkita64:20240120 // Before SDL broken audio
+      image: docker://devkitpro/devkita64:latest
 
     steps:
     - name: Check out repository
@@ -26,6 +27,9 @@ jobs:
 
     - name: Remove enet
       run: dkp-pacman --noconfirm -R switch-enet
+
+    - name: Remove ffmpeg
+      run: dkp-pacman --noconfirm -R switch-libmpv switch-ffmpeg
 
     - name: Run cmake
       continue-on-error: true

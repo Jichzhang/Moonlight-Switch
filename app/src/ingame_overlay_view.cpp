@@ -5,8 +5,14 @@
 //  Created by Даниил Виноградов on 29.05.2021.
 //
 
+#ifdef PLATFORM_SWITCH
+#include <borealis/platforms/switch/switch_input.hpp>
+#endif
+
+#include "helper.hpp"
 #include "ingame_overlay_view.hpp"
 #include "streaming_input_overlay.hpp"
+#include "button_selecting_dialog.hpp"
 #include <libretro-common/retro_timers.h>
 
 #include <iomanip>
@@ -79,6 +85,48 @@ LogoutTab::LogoutTab(StreamingView* streamView) : streamView(streamView) {
 OptionsTab::OptionsTab(StreamingView* streamView) : streamView(streamView) {
     this->inflateFromXMLRes("xml/views/ingame_overlay/options_tab.xml");
 
+    guideKeyButtons->setText("settings/guide_key_buttons"_i18n);
+    setupButtonsSelectorCell(guideKeyButtons,
+                             Settings::instance().guide_key_options().buttons);
+    guideKeyButtons->registerClickAction([this](View* view) {
+        ButtonSelectingDialog* dialog = ButtonSelectingDialog::create(
+            "settings/guide_key_setup_message"_i18n, [this](auto buttons) {
+                auto options = Settings::instance().guide_key_options();
+                options.buttons = buttons;
+                Settings::instance().set_guide_key_options(options);
+                setupButtonsSelectorCell(guideKeyButtons, buttons);
+            });
+
+        dialog->open();
+        return true;
+    });
+
+#ifndef PLATFORM_SWITCH
+    guideBySystemButton->removeFromSuperView();
+#else
+    guideBySystemButton->init(
+        "settings/use_system_button"_i18n,
+        {"hints/off"_i18n, "settings/buttons/screenshot"_i18n, "settings/buttons/home"_i18n},
+        (int) Settings::instance().get_guide_system_button(), [this](int value) {
+            if (value != 0 && Settings::instance().get_overlay_system_button() == (ButtonOverrideType) value) {
+                brls::sync([this, value](){
+                    showError("settings/system_button_duplication_error"_i18n, [](){});
+                });
+                guideBySystemButton->setSelection((int) Settings::instance().get_guide_system_button(), true);
+                return;
+            }
+
+            Settings::instance().set_guide_system_button((ButtonOverrideType) value);
+
+            auto color = Settings::instance().get_guide_system_button() == ButtonOverrideType::NONE ?
+                Application::getTheme()["brls/text_disabled"] : Application::getTheme()["brls/accent"];
+            guideBySystemButton->setDetailTextColor(color);
+        });
+    auto color = Settings::instance().get_guide_system_button() == ButtonOverrideType::NONE ?
+         Application::getTheme()["brls/text_disabled"] : Application::getTheme()["brls/accent"];
+    guideBySystemButton->setDetailTextColor(color);
+#endif
+
     volumeHeader->setSubtitle(
         std::to_string(Settings::instance().get_volume()) + "%");
     float amplification =
@@ -139,6 +187,27 @@ OptionsTab::OptionsTab(StreamingView* streamView) : streamView(streamView) {
         }
     });
 
+    std::vector<std::string> keyboardFingersOptions = {
+        "3", "4", "5", "Disabled"};
+    keyboardFingers->setText("settings/keyboard_fingers"_i18n);
+    keyboardFingers->setData(keyboardFingersOptions);
+    switch (Settings::instance().get_keyboard_fingers()) {
+        GET_SETTINGS(keyboardFingers, 3, 0);
+        GET_SETTINGS(keyboardFingers, 4, 1);
+        GET_SETTINGS(keyboardFingers, 5, 2);
+        GET_SETTINGS(keyboardFingers, -1, 3);
+        DEFAULT;
+    }
+    keyboardFingers->getEvent()->subscribe([](int selected) {
+        switch (selected) {
+            SET_SETTING(0, set_keyboard_fingers(3));
+            SET_SETTING(1, set_keyboard_fingers(4));
+            SET_SETTING(2, set_keyboard_fingers(5));
+            SET_SETTING(3, set_keyboard_fingers(-1));
+            DEFAULT;
+        }
+    });
+
     touchscreenMouseMode->init("settings/touchscreen_mouse_mode"_i18n,
                                Settings::instance().touchscreen_mouse_mode(),
                                [this](bool value) {
@@ -160,3 +229,30 @@ OptionsTab::OptionsTab(StreamingView* streamView) : streamView(streamView) {
 }
 
 OptionsTab::~OptionsTab() { Settings::instance().save(); }
+
+std::string
+OptionsTab::getTextFromButtons(std::vector<ControllerButton> buttons) {
+    std::string buttonsText = "";
+    if (buttons.size() > 0) {
+        for (int i = 0; i < buttons.size(); i++) {
+            buttonsText += brls::Hint::getKeyIcon(buttons[i], true);
+            if (i < buttons.size() - 1)
+                buttonsText += " + ";
+        }
+    } else {
+        buttonsText = "hints/off"_i18n;
+    }
+    return buttonsText;
+}
+
+NVGcolor
+OptionsTab::getColorFromButtons(std::vector<brls::ControllerButton> buttons) {
+    Theme theme = Application::getTheme();
+    return buttons.empty() ? theme["brls/text_disabled"]
+                           : theme["brls/list/listItem_value_color"];
+}
+
+void OptionsTab::setupButtonsSelectorCell(brls::DetailCell* cell, std::vector<ControllerButton> buttons) {
+    cell->setDetailText(getTextFromButtons(buttons));
+    cell->setDetailTextColor(getColorFromButtons(buttons));
+}

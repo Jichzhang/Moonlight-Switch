@@ -19,11 +19,19 @@ if (APPLE AND PLATFORM_DESKTOP)
 endif ()
 
 if (PLATFORM_IOS OR PLATFORM_TVOS)
-    set(ENABLE_ARC OFF)
+    # set(ENABLE_ARC OFF)
 endif ()
 
 # toolchain
 include(${EXTERN_PATH}/cmake/toolchain.cmake)
+
+# Renderers
+if (PLATFORM_IOS OR PLATFORM_TVOS)
+    # set(USE_METAL_RENDERER ON)
+    set(USE_GL_RENDERER ON)
+else()
+    set(USE_GL_RENDERER ON)
+endif ()
 
 set(CMAKE_PREFIX_PATH ${CMAKE_PREFIX_PATH} "${EXTERN_PATH}/cmake")
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${EXTERN_PATH}/cmake")
@@ -33,7 +41,7 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${EXTERN_PATH}/cmake")
 project(Moonlight)
 set(VERSION_MAJOR "1")
 set(VERSION_MINOR "2")
-set(VERSION_ALTER "1")
+set(VERSION_ALTER "3")
 set(VERSION_BUILD "1")
 set(PACKAGE_NAME "ru.xitrix.Moonlight")
 set(PSN_TITLE_ID  "MNTL00000")
@@ -55,7 +63,7 @@ else ()
     set(USE_MBEDTLS_CRYPTO ON)
 endif ()
 
-if (PLATFORM_IOS OR PLATFORM_TVOS OR PLATFORM_ANDROID OR PLATFORM_PSV)
+if (PLATFORM_ANDROID OR PLATFORM_PSV)
     set(MULTICAST_DISABLED ON)
 endif ()
 
@@ -99,12 +107,18 @@ elseif (PLATFORM_SWITCH)
 elseif (PLATFORM_PSV)
     add_definitions(-D__psp2__ -D__PSV__)
 elseif (PLATFORM_ANDROID)
+elseif (PLATFORM_IOS OR PLATFORM_TVOS)
+    list(APPEND MAIN_SRC app/platforms/ios/apple_mdns.mm)
+    list(APPEND MAIN_SRC app/platforms/ios/apple_display.mm)
 endif ()
 
+if (USE_METAL_RENDERER)
+    list(APPEND MAIN_SRC app/src/streaming/video/Metal/MetalVideoRenderer.mm)
+endif ()
 
 # building target
 program_target(${PROJECT_NAME} "${MAIN_SRC}")
-set_target_properties(${PROJECT_NAME} PROPERTIES CXX_STANDARD 17)
+set_target_properties(${PROJECT_NAME} PROPERTIES CXX_STANDARD 20)
 
 
 # building release file
@@ -115,7 +129,7 @@ if (PLATFORM_DESKTOP)
             MACOSX_BUNDLE TRUE
             MACOSX_BUNDLE_BUNDLE_NAME ${PROJECT_NAME}
             # MACOSX_BUNDLE_ICON_FILE "borealis.icns"
-            MACOSX_BUNDLE_COPYRIGHT "Copyright 2023 ${PROJECT_AUTHOR}"
+            MACOSX_BUNDLE_COPYRIGHT "Copyright 2024 ${PROJECT_AUTHOR}"
             # RESOURCE "${CMAKE_SOURCE_DIR}/app/borealis.icns"
             XCODE_ATTRIBUTE_ASSETCATALOG_COMPILER_APPICON_NAME "AppIcon"
             MACOSX_BUNDLE_GUI_IDENTIFIER "${PACKAGE_NAME}"
@@ -201,15 +215,12 @@ elseif (PLATFORM_SWITCH)
         COMMAND ${CMAKE_COMMAND} -E remove_directory ${CMAKE_BINARY_DIR}/resources/font
         COMMAND ${NX_ELF2NRO_EXE} ${PROJECT_NAME}.elf ${PROJECT_NAME}.nro --icon=${PROJECT_ICON} --nacp=${PROJECT_NAME}.nacp --romfsdir=${CMAKE_BINARY_DIR}/resources
     )
-    list(APPEND APP_PLATFORM_LIB swresample dav1d z)
+    list(APPEND APP_PLATFORM_LIB dav1d z)
 elseif (PLATFORM_ANDROID)
     list(APPEND APP_PLATFORM_LIB android)
     target_link_libraries(${PROJECT_NAME} PRIVATE 
-        # ${CMAKE_CURRENT_SOURCE_DIR}/extern/borealis/library/lib/extern/angle/android/arm64_v8a/libOSMesa.so
-        ${CMAKE_CURRENT_SOURCE_DIR}/extern/borealis/library/lib/extern/angle/android/libEGL_angle.so
-        # ${CMAKE_CURRENT_SOURCE_DIR}/extern/borealis/library/lib/extern/angle/android/libGLESv1_CM_angle.so
-        ${CMAKE_CURRENT_SOURCE_DIR}/extern/borealis/library/lib/extern/angle/android/libGLESv2_angle.so
-        # ${CMAKE_CURRENT_SOURCE_DIR}/extern/borealis/library/lib/extern/angle/android/libGLESv2_vulkan_secondaries_angle.so
+    # ${CMAKE_CURRENT_SOURCE_DIR}/extern/borealis/library/lib/extern/angle/android/arm64-v8a/libEGL_angle.so
+    # ${CMAKE_CURRENT_SOURCE_DIR}/extern/borealis/library/lib/extern/angle/android/arm64-v8a/libGLESv2_angle.so
     )
 elseif (PLATFORM_IOS)
     ios_bundle(
@@ -219,10 +230,13 @@ elseif (PLATFORM_IOS)
             ${PROJECT_NAME}
             "${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_ALTER}"
             "${VERSION_BUILD}")
+
     list(APPEND IOS_FRAMEWORKS ${CMAKE_CURRENT_SOURCE_DIR}/extern/borealis/library/lib/extern/angle/ios/MetalANGLE.framework)
     set_target_properties(${PROJECT_NAME} PROPERTIES 
         INSTALL_RPATH @executable_path/Frameworks
         XCODE_EMBED_FRAMEWORKS_CODE_SIGN_ON_COPY ON
+        MACOSX_BUNDLE_COPYRIGHT "Copyright 2024 ${PROJECT_AUTHOR}"
+        XCODE_ATTRIBUTE_CURRENT_PROJECT_VERSION "${VERSION_BUILD}"
         XCODE_ATTRIBUTE_INFOPLIST_KEY_GCSupportsGameMode YES
         XCODE_ATTRIBUTE_INFOPLIST_KEY_GCSupportsControllerUserInteraction YES
         XCODE_ATTRIBUTE_INFOPLIST_KEY_GCRequiresControllerUserInteraction YES
@@ -242,6 +256,8 @@ elseif (PLATFORM_TVOS)
     set_target_properties(${PROJECT_NAME} PROPERTIES 
         INSTALL_RPATH @executable_path/Frameworks
         XCODE_EMBED_FRAMEWORKS_CODE_SIGN_ON_COPY ON
+        MACOSX_BUNDLE_COPYRIGHT "Copyright 2024 ${PROJECT_AUTHOR}"
+        XCODE_ATTRIBUTE_CURRENT_PROJECT_VERSION "${VERSION_BUILD}"
         XCODE_ATTRIBUTE_INFOPLIST_KEY_GCSupportsGameMode YES
         XCODE_ATTRIBUTE_INFOPLIST_KEY_GCSupportsControllerUserInteraction YES
         XCODE_ATTRIBUTE_INFOPLIST_KEY_GCRequiresControllerUserInteraction YES
@@ -266,6 +282,7 @@ target_include_directories(${PROJECT_NAME} PUBLIC
         app/src/streaming/video
         app/src/streaming/video/deko3d
         app/src/streaming/video/OpenGL
+        app/src/streaming/video/Metal
         app/src/utils
         extern/CImg
         ${MBEDTLS_INCLUDE_DIRS}
@@ -284,17 +301,30 @@ find_package(PNG REQUIRED)
 find_library(OPUS_LIBRARY opus)
 message("opus: ${OPUS_LIBRARY}")
 
-find_library(AVCODEC_LIBRARY avcodec)
-message("avcodec: ${AVCODEC_LIBRARY}")
+if(PLATFORM_SWITCH)
+    target_link_libraries(${PROJECT_NAME} PRIVATE 
+        ${CMAKE_CURRENT_SOURCE_DIR}/lib/switch/libavcodec.a
+        ${CMAKE_CURRENT_SOURCE_DIR}/lib/switch/libavformat.a
+        ${CMAKE_CURRENT_SOURCE_DIR}/lib/switch/libavutil.a
+        ${CMAKE_CURRENT_SOURCE_DIR}/lib/switch/libswresample.a
+    )
 
-find_library(AVFORMAT_LIBRARY avformat)
-message("avformat: ${AVFORMAT_LIBRARY}")
+    target_include_directories(${PROJECT_NAME} PRIVATE 
+        ${CMAKE_CURRENT_SOURCE_DIR}/lib/switch/include
+    )
+else()
+    find_library(AVCODEC_LIBRARY avcodec)
+    message("avcodec: ${AVCODEC_LIBRARY}")
+    
+    find_library(AVFORMAT_LIBRARY avformat)
+    message("avformat: ${AVFORMAT_LIBRARY}")
 
-find_library(AVUTIL_LIBRARY avutil)
-message("avutil: ${AVUTIL_LIBRARY}")
+    find_library(AVUTIL_LIBRARY avutil)
+    message("avutil: ${AVUTIL_LIBRARY}")
 
-find_library(SWRESAMPLE_LIBRARY swresample)
-message("swresample: ${SWRESAMPLE_LIBRARY}")
+    find_library(SWRESAMPLE_LIBRARY swresample)
+    message("swresample: ${SWRESAMPLE_LIBRARY}")
+endif ()
 
 # Recompiled CURL with Mbedtls support for Switch
 if(PLATFORM_SWITCH)
@@ -334,6 +364,22 @@ else ()
             OpenSSL::Crypto)
 endif ()
 
+if (USE_GL_RENDERER)
+    if (PLATFORM_MACOS)
+        set(SUPPORT_HDR ON)
+    endif ()
+    add_definitions(-DUSE_GL_RENDERER)
+endif ()
+
+if (USE_METAL_RENDERER)
+    set(SUPPORT_HDR ON)
+    add_definitions(-DUSE_METAL_RENDERER)
+endif ()
+
+if (SUPPORT_HDR)
+    add_definitions(-DSUPPORT_HDR)
+endif ()
+
 if (PLATFORM_IOS OR PLATFORM_TVOS)
     set_target_properties(${PROJECT_NAME} PROPERTIES
         XCODE_EMBED_FRAMEWORKS "${IOS_FRAMEWORKS}")
@@ -341,7 +387,7 @@ endif()
 
 if (APPLE)
     set(XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC OFF)
-    target_link_libraries(${PROJECT_NAME} PRIVATE "-framework CoreMedia" "-framework VideoToolbox")
+    target_link_libraries(${PROJECT_NAME} PRIVATE "-framework CoreMedia" "-framework VideoToolbox" "-framework AVKit" "-framework MetalKit")
 elseif (PLATFORM_PSV)
     target_link_libraries(${PROJECT_NAME} PRIVATE mp3lame libGLESv2_stub)
 endif ()

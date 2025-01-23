@@ -4,7 +4,10 @@
 #include "IVideoRenderer.hpp"
 #include <deko3d.hpp>
 
+#include <glm/mat4x4.hpp>
+
 #include <borealis.hpp>
+#include <borealis/platforms/switch/switch_video.hpp>
 #include <nanovg/framework/CShader.h>
 #include <nanovg/framework/CExternalImage.h>
 #include <nanovg/framework/CDescriptorSet.h>
@@ -15,7 +18,7 @@ class DKVideoRenderer : public IVideoRenderer {
     DKVideoRenderer();
     ~DKVideoRenderer();
 
-    void draw(NVGcontext* vg, int width, int height, AVFrame* frame) override;
+    void draw(NVGcontext* vg, int width, int height, AVFrame* frame, int imageFormat) override;
 
     VideoRenderStats* video_render_stats() override;
 
@@ -23,15 +26,22 @@ class DKVideoRenderer : public IVideoRenderer {
     void checkAndInitialize(int width, int height, AVFrame* frame);
 
     bool m_is_initialized = false;
+    
+    int m_frame_width = 0;
+    int m_frame_height = 0;
+    int m_screen_width = 0;
+    int m_screen_height = 0;
 
+    brls::SwitchVideoContext *vctx = nullptr;
     dk::Device dev;
     dk::Queue queue;
 
-    std::optional<CMemPool> pool_images;
+    // std::optional<CMemPool> pool_images;
     std::optional<CMemPool> pool_code;
     std::optional<CMemPool> pool_data;
 
     dk::UniqueCmdBuf cmdbuf;
+    DkCmdList cmdlist;
 
     CDescriptorSet<4096U> *imageDescriptorSet;
     // CDescriptorSet<1> samplerDescriptorSet;
@@ -40,6 +50,7 @@ class DKVideoRenderer : public IVideoRenderer {
     CShader fragmentShader;
 
     CMemPool::Handle vertexBuffer;
+    CMemPool::Handle transformUniformBuffer;
 
     dk::ImageLayout lumaMappingLayout; 
     dk::ImageLayout chromaMappingLayout; 

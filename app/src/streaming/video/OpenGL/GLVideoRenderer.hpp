@@ -1,3 +1,5 @@
+#ifdef USE_GL_RENDERER
+
 #include "IVideoRenderer.hpp"
 #if defined(__LIBRETRO__)
 #include "glsym.h"
@@ -22,7 +24,7 @@ class GLVideoRenderer : public IVideoRenderer {
     GLVideoRenderer(){};
     ~GLVideoRenderer();
 
-    void draw(NVGcontext* vg, int width, int height, AVFrame* frame) override;
+    void draw(NVGcontext* vg, int width, int height, AVFrame* frame, int imageFormat) override;
 
     VideoRenderStats* video_render_stats() override;
 
@@ -47,8 +49,13 @@ class GLVideoRenderer : public IVideoRenderer {
     int textureWidth[PLANES_NUM_MAX];
     int textureHeight[PLANES_NUM_MAX];
     float borderColor[PLANES_NUM_MAX] = {0.0f, 0.5f, 0.5f};
-    VideoRenderStats m_video_render_stats = {};
+    VideoRenderStats m_video_render_stats_progress = {};
+    VideoRenderStats m_video_render_stats_cache = {};
+    uint64_t timeCount = 0;
 
     int currentFrameTypePlanesNum = 0;
-    const int (*currentPlanes)[4];
+    const int (*currentPlanes)[5];
+    int currentFormat;
 };
+
+#endif // USE_GL_RENDERER

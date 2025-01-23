@@ -8,6 +8,7 @@
 
 using namespace brls;
 
+int m_video_format;
 static MoonlightSession* m_active_session = nullptr;
 static MoonlightSessionDecoderAndRenderProvider* m_provider = nullptr;
 
@@ -92,7 +93,7 @@ void MoonlightSession::connection_log_message(const char* format, ...) {
     vsnprintf(buffer, size, format, arglist);
     va_end(arglist);
 
-    brls::Logger::info(std::string(buffer));
+    brls::Logger::info(fmt::runtime(std::string(buffer)));
 }
 
 void MoonlightSession::connection_rumble(unsigned short controller,
@@ -117,11 +118,18 @@ void MoonlightSession::connection_status_update(int connection_status) {
     }
 }
 
+void MoonlightSession::connection_set_hdr_mode(bool use_hdr) {
+    if (m_active_session) {
+        m_active_session->m_use_hdr = use_hdr;
+    }
+}
+
 // MARK: Video decoder callbacks
 
 int MoonlightSession::video_decoder_setup(int video_format, int width,
                                           int height, int redraw_rate,
                                           void* context, int dr_flags) {
+    m_video_format = video_format;
     if (m_active_session && m_active_session->m_video_decoder) {
         return m_active_session->m_video_decoder->setup(
             video_format, width, height, redraw_rate, context, dr_flags);
@@ -225,9 +233,13 @@ void MoonlightSession::start(ServerCallback<bool> callback) {
         break;
     case H265:
         m_config.supportedVideoFormats = VIDEO_FORMAT_H265;
+            if (Settings::instance().request_hdr())
+                m_config.supportedVideoFormats |= VIDEO_FORMAT_H265_MAIN10;
         break;
     case AV1:
         m_config.supportedVideoFormats = VIDEO_FORMAT_AV1_MAIN8;
+            if (Settings::instance().request_hdr())
+                m_config.supportedVideoFormats |= VIDEO_FORMAT_AV1_MAIN10;
         break;
     default:
         break;
@@ -243,6 +255,7 @@ void MoonlightSession::start(ServerCallback<bool> callback) {
     m_connection_callbacks.rumble = connection_rumble;
     m_connection_callbacks.rumbleTriggers = connection_rumble_triggers;
     m_connection_callbacks.connectionStatusUpdate = connection_status_update;
+    m_connection_callbacks.setHdrMode = connection_set_hdr_mode;
 
     LiInitializeVideoCallbacks(&m_video_callbacks);
     m_video_callbacks.setup = video_decoder_setup;
@@ -306,7 +319,7 @@ void MoonlightSession::draw(NVGcontext* vg, int width, int height) {
     if (m_video_decoder && m_video_renderer) {
         AVFrameHolder::instance().get(
             [this, vg, width, height](AVFrame* frame) {
-                m_video_renderer->draw(vg, width, height, frame);
+                m_video_renderer->draw(vg, width, height, frame, m_video_format);
             });
 
         m_session_stats.video_decode_stats =

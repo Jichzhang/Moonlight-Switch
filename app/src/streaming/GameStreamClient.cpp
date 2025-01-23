@@ -12,6 +12,8 @@
 
 #include <arpa/inet.h>
 #include <sys/socket.h>
+#include <netinet/in.h>
+#include <fmt/core.h>
 
 #ifndef PLATFORM_PSV
 #include <net/if.h>
@@ -90,25 +92,26 @@ bool GameStreamClient::can_find_host() { return get_my_ip_address() != 0; }
  static std::vector<Host> foundHosts;
  static std::string foundHost;
 
-char *get_ip_str(const struct sockaddr *sa, char *s, size_t maxlen)
+std::string get_ip_str(const struct sockaddr *addr)
 {
-    switch(sa->sa_family) {
-        case AF_INET:
-            inet_ntop(AF_INET, &(((struct sockaddr_in *)sa)->sin_addr),
-                      s, maxlen);
-            break;
-
-        case AF_INET6:
-            inet_ntop(AF_INET6, &(((struct sockaddr_in6 *)sa)->sin6_addr),
-                      s, maxlen);
-            break;
-
-        default:
-            strncpy(s, "Unknown AF", maxlen);
-            return NULL;
+    char addrStr[INET6_ADDRSTRLEN];
+    if (addr->sa_family == AF_INET) {
+        inet_ntop(addr->sa_family, &((struct sockaddr_in*)addr)->sin_addr, addrStr, sizeof(addrStr));
+        unsigned short port = htons(((struct sockaddr_in*)addr)->sin_port);
+        return fmt::format("{}", addrStr);
     }
-
-    return s;
+    else {
+        struct sockaddr_in6* sin6 = (struct sockaddr_in6*)addr;
+        inet_ntop(addr->sa_family, &sin6->sin6_addr, addrStr, sizeof(addrStr));
+        unsigned short port = ntohs(((struct sockaddr_in6*)addr)->sin6_port);
+        if (sin6->sin6_scope_id != 0) {
+            // Link-local addresses with scope IDs are special
+            return fmt::format("{}{}", addrStr, sin6->sin6_scope_id);
+        }
+        else {
+            return fmt::format("{}", addrStr);
+        }
+    }
 }
 
 static int mdns_discovery_callback(int sock, const struct sockaddr* from, size_t addrlen,
@@ -118,9 +121,7 @@ static int mdns_discovery_callback(int sock, const struct sockaddr* from, size_t
                                    size_t record_length, void* user_data)
 {
     if (type == MDNS_RECORDTYPE_A) {
-        char internal[256];
-        auto res = get_ip_str(from, internal, addrlen);
-        foundHost = res;
+        foundHost = get_ip_str(from);
     }
     return 0;
 }
@@ -159,7 +160,7 @@ void GameStreamClient::find_hosts(ServerCallback<std::vector<Host>>& callback) {
 
                 SERVER_DATA server_data;
 
-                int status = gs_init(&server_data, foundHost, true);
+                int status = gs_init(&server_data, foundHost);
                 if (status == GS_OK) {
                     Host host;
                     host.address = foundHost;
@@ -210,13 +211,10 @@ void GameStreamClient::connect(const std::string& address,
 
         brls::sync([this, address, callback, status] {
             if (status == GS_OK) {
-                Host host;
-                host.address = address;
-                host.hostname = m_server_data[address].hostname;
-                host.mac = m_server_data[address].mac;
                 callback(
                     GSResult<SERVER_DATA>::success(m_server_data[address]));
             } else {
+                m_server_data.erase(address);
                 callback(GSResult<SERVER_DATA>::failure(gs_error()));
             }
         });

@@ -1,3 +1,5 @@
+#ifdef USE_GL_RENDERER
+
 #include "GLVideoRenderer.hpp"
 
 // TODO: rework logging with callbacks
@@ -7,17 +9,23 @@
 
 #include "GLShaders.hpp"
 
-// tex width | frame width | from color space | to color space
-static const int nv12Planes[][4] = {
-    {1, 1, GL_R8, GL_RED},  // Y
-    {2, 2, GL_RG8, GL_RG},  // UV
-    {0, 0, 0, 0}            // NOT EXISTS
+// tex width | frame width | frame height | from color space | to color space
+static const int nv12Planes[][5] = {
+    {1, 1, 1, GL_R8, GL_RED},  // Y
+    {2, 2, 2, GL_RG8, GL_RG},  // UV
+    {0, 0, 0, 0, 0},           // NOT EXISTS
 };
 
-static const int yuv420Planes[][4] = {
-    {1, 1, GL_R8, GL_RED}, // Y
-    {1, 2, GL_R8, GL_RED}, // U
-    {1, 2, GL_R8, GL_RED}  // V
+static const int yuv420Planes[][5] = {
+    {1, 1, 1, GL_R8, GL_RED},  // Y
+    {1, 2, 2, GL_R8, GL_RED},  // U
+    {1, 2, 2, GL_R8, GL_RED},  // V
+};
+
+static const int p010Planes[][5] = {
+    {1, 1, 2, GL_R16, GL_RED},  // Y
+    {2, 2, 4, GL_RG16, GL_RG},  // UV
+    {0, 0, 0, 0, 0},            // NOT EXISTS
 };
 
 static const float vertices[] = {-1.0f, -1.0f, 1.0f, -1.0f,
@@ -138,20 +146,34 @@ void GLVideoRenderer::initialize(AVFrame* frame) {
         case AV_PIX_FMT_YUV420P:
             currentFrameTypePlanesNum = 3;
             currentPlanes = yuv420Planes;
+            currentFormat = GL_UNSIGNED_BYTE;
 
             glShaderSource(frag, 1,
-                   use_gl_core ? &fragment_yuv420_shader_string_core
-                               : &fragment_yuv420_shader_string, nullptr);
+                   use_gl_core ? &fragment_three_planes_shader_string_core
+                               : &fragment_three_planes_shader_string, nullptr);
             break;
         case AV_PIX_FMT_NV12:
             currentFrameTypePlanesNum = 2;
             currentPlanes = nv12Planes;
+            currentFormat = GL_UNSIGNED_BYTE;
 
             glShaderSource(frag, 1,
-                   use_gl_core ? &fragment_nv12_shader_string_core
-                               : &fragment_nv12_shader_string, nullptr);
+                   use_gl_core ? &fragment_two_planes_shader_string_core
+                               : &fragment_two_planes_shader_string, nullptr);
             break;
-        default: break;
+        case AV_PIX_FMT_P010:
+            currentFrameTypePlanesNum = 2;
+            currentPlanes = p010Planes;
+            currentFormat = GL_UNSIGNED_SHORT;
+
+            glShaderSource(frag, 1,
+                   use_gl_core ? &fragment_two_planes_shader_string_core
+                               : &fragment_two_planes_shader_string, nullptr);
+            break;
+        default:
+            brls::Logger::info("GL: Unknown frame format! - {}", frame->format);
+            m_is_initialized = false;
+            return;
     }
 
     glCompileShader(frag);
@@ -187,9 +209,9 @@ void GLVideoRenderer::bindTexture(int id) {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColorInternal);
     textureWidth[id] = m_frame_width / currentPlanes[id][1];
-    textureHeight[id] = m_frame_height / currentPlanes[id][1];
-    glTexImage2D(GL_TEXTURE_2D, 0, currentPlanes[id][2], textureWidth[id], textureHeight[id],
-                 0, currentPlanes[id][3], GL_UNSIGNED_BYTE, nullptr);
+    textureHeight[id] = m_frame_height / currentPlanes[id][2];
+    glTexImage2D(GL_TEXTURE_2D, 0, currentPlanes[id][3], textureWidth[id], textureHeight[id],
+                 0, currentPlanes[id][4], currentFormat, nullptr);
     glUniform1i(m_texture_uniform[id], id);
 }
 
@@ -203,8 +225,8 @@ void GLVideoRenderer::checkAndInitialize(int width, int height,
                            height);
 #endif
 
-        initialize(frame);
         m_is_initialized = true;
+        initialize(frame);
 
 #ifndef _WIN32
         brls::Logger::info("GL: Init done");
@@ -268,10 +290,9 @@ void GLVideoRenderer::checkAndUpdateScale(int width, int height,
 }
 
 void GLVideoRenderer::draw(NVGcontext* vg, int width, int height,
-                           AVFrame* frame) {
-
-    if (!m_video_render_stats.rendered_frames) {
-        m_video_render_stats.measurement_start_timestamp = LiGetMillis();
+                           AVFrame* frame, int imageFormat) {
+    if (!m_video_render_stats_progress.rendered_frames) {
+        m_video_render_stats_progress.measurement_start_timestamp = LiGetMillis();
     }
 
     uint64_t before_render = LiGetMillis();
@@ -293,21 +314,39 @@ void GLVideoRenderer::draw(NVGcontext* vg, int width, int height,
         glBindTexture(GL_TEXTURE_2D, m_texture_id[i]);
         glPixelStorei(GL_UNPACK_ROW_LENGTH, real_width);
         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, textureWidth[i],
-                        textureHeight[i], currentPlanes[i][3], GL_UNSIGNED_BYTE, image);
+                        textureHeight[i], currentPlanes[i][4], currentFormat, image);
         glActiveTexture(GL_TEXTURE0);
     }
 
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 
-    m_video_render_stats.total_render_time += LiGetMillis() - before_render;
-    m_video_render_stats.rendered_frames++;
+    auto render_time = LiGetMillis() - before_render;
+    timeCount += render_time;
+
+    m_video_render_stats_progress.total_render_time += render_time;
+    m_video_render_stats_progress.rendered_frames++;
+
+    const int time_interval = 200;
+    if (timeCount >= time_interval) {
+        // brls::Logger::debug("FPS: {}", frames / 5.0f);
+        m_video_render_stats_cache = m_video_render_stats_progress;
+        m_video_render_stats_progress = {};
+
+        m_video_render_stats_cache.rendered_fps =
+            (float)m_video_render_stats_cache.rendered_frames /
+            ((float)(LiGetMillis() -
+                    m_video_render_stats_cache.measurement_start_timestamp) /
+            1000);
+
+        timeCount -= time_interval;
+    }
+
+//    auto code = glGetError();
+//    brls::Logger::error("OpenGL error: {}\n", code);
 }
 
 VideoRenderStats* GLVideoRenderer::video_render_stats() {
-    m_video_render_stats.rendered_fps =
-        (float)m_video_render_stats.rendered_frames /
-        ((float)(LiGetMillis() -
-                 m_video_render_stats.measurement_start_timestamp) /
-         1000);
-    return (VideoRenderStats*)&m_video_render_stats;
+    return (VideoRenderStats*)&m_video_render_stats_cache;
 }
+
+#endif // USE_GL_RENDERER

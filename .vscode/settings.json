@@ -72,6 +72,11 @@
         "valarray": "cpp",
         "variant": "cpp",
         "*.inc": "cpp",
-        "*.cpp2": "cpp"
-    }
+        "*.cpp2": "cpp",
+        "complex": "cpp",
+        "text_encoding": "cpp",
+        "cfenv": "cpp",
+        "typeindex": "cpp"
+    },
+    "cmake.configureSettings": { "PLATFORM_SWITCH": "ON" }
 }

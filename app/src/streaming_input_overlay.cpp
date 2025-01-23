@@ -39,7 +39,8 @@ StreamingInputOverlay::StreamingInputOverlay(StreamingView* streamView)
                                   this->toggleKeyboard();
                                   return true;
                               }
-                              return false;
+                              dismiss();
+                              return true;
                           });
 }
 
@@ -201,16 +202,19 @@ void StreamingInputOverlay::refreshKeyboard() {
 void StreamingInputOverlay::populateHintWithDefaultItems() {
     actionsToFree.push_back(registerAction("mouse_input/hide"_i18n,
                                            ControllerButton::BUTTON_BACK,
-                                           [this](View* view) { 
+                                           [this](View* view) {
                                                 this->toggleHintsVisibility();
-                                                return true; 
+                                                return true;
                                             }));
+
     actionsToFree.push_back(registerAction("mouse_input/mouse"_i18n,
                                            ControllerButton::BUTTON_LSB,
                                            [](View* view) { return true; }));
+
     actionsToFree.push_back(registerAction("mouse_input/scroll"_i18n,
                                            ControllerButton::BUTTON_RSB,
                                            [](View* view) { return true; }));
+
     actionsToFree.push_back(registerAction("mouse_input/keyboard"_i18n,
                                            ControllerButton::BUTTON_X,
                                            [this](View* view) {
@@ -233,18 +237,21 @@ void StreamingInputOverlay::populateHintWithKeyboardItems() {
                                                 sendClick(0x25);
                                                 return true; 
                                             }, false, true));
+
     actionsToFree.push_back(registerAction("→",
                                            ControllerButton::BUTTON_RB,
                                            [](View* view) {
                                                 sendClick(0x27);
                                                 return true; 
                                             }, false, true));
+
     actionsToFree.push_back(registerAction("mouse_input/space"_i18n,
                                            ControllerButton::BUTTON_Y,
                                            [](View* view) { 
                                                 sendClick(0x20);
                                                 return true; 
                                             }, false, true));
+
     actionsToFree.push_back(registerAction("mouse_input/delete"_i18n,
                                            ControllerButton::BUTTON_X,
                                            [](View* view) { 

@@ -10,13 +10,18 @@
 #include "helper.hpp"
 #include "main_tabs_view.hpp"
 
+#if defined(PLATFORM_IOS) || defined(PLATFORM_TVOS)
+extern void darwin_mdns_start(ServerCallback<std::vector<Host>>& callback);
+extern void darwin_mdns_stop();
+#endif
+
 AddHostTab::AddHostTab() {
     // Inflate the tab from the XML file
     this->inflateFromXMLRes("xml/tabs/add_host.xml");
 
     hostIP->init("add_host/host_ip"_i18n, "");
-    hostIP->setPlaceholder("192.168.1.109");
-    hostIP->setHint("192.168.1.109");
+    hostIP->setPlaceholder("192.168.1.109:47989");
+    hostIP->setHint("192.168.1.109:47989");
 
     connect->setText("add_host/connect"_i18n);
     connect->registerClickAction([this](View* view) {
@@ -89,7 +94,11 @@ void AddHostTab::findHost() {
             [this](auto result) { fillSearchBox(result); });
 #else
     ASYNC_RETAIN
+#if defined(PLATFORM_IOS) || defined(PLATFORM_TVOS)
+    darwin_mdns_start(
+#else
     GameStreamClient::find_hosts(
+#endif
         [ASYNC_TOKEN](const GSResult<std::vector<Host>>& result) {
             ASYNC_RELEASE
 
@@ -109,11 +118,17 @@ void AddHostTab::findHost() {
                     });
                     searchBox->addView(hostButton);
                 }
-                loader->setVisibility(brls::Visibility::GONE);
+//                loader->setVisibility(brls::Visibility::GONE);
             } else {
                 showError(result.error(), [] {});
             }
         });
+#endif
+}
+
+void AddHostTab::stopSearchHost() {
+#ifdef PLATFORM_IOS
+    
 #endif
 }
 
@@ -124,10 +139,10 @@ void AddHostTab::connectHost(const std::string& address) {
     loaderView->open();
 
     GameStreamClient::instance().connect(
-        address, [this, loaderView](const GSResult<SERVER_DATA>& result) {
-                loaderView->close([this, result] {
+        address, [this, loaderView, address](const GSResult<SERVER_DATA>& result) {
+                loaderView->close([this, result, address] {
                 if (result.isSuccess()) {
-                    Host host{.address = result.value().address,
+                    Host host{.address = address,
                               .hostname = result.value().hostname,
                               .mac = result.value().mac};
 
@@ -152,7 +167,7 @@ void AddHostTab::connectHost(const std::string& address) {
 
                     ASYNC_RETAIN
                     GameStreamClient::instance().pair(
-                        result.value().address, pin,
+                        address, pin,
                         [ASYNC_TOKEN, host, dialog](const GSResult<bool>& result) {
                             ASYNC_RELEASE
                             dialog->dismiss([result, host] {
@@ -192,6 +207,8 @@ AddHostTab::~AddHostTab() {
     DiscoverManager::instance().pause();
     DiscoverManager::instance().getHostsUpdateEvent()->unsubscribe(
         searchSubscription);
+#elif defined(PLATFORM_IOS) || defined(PLATFORM_TVOS)
+    darwin_mdns_stop();
 #endif
 }
 

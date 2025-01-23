@@ -5,8 +5,13 @@
 //  Created by XITRIX on 26.05.2021.
 //
 
+#ifdef PLATFORM_SWITCH
+#include <borealis/platforms/switch/switch_input.hpp>
+#endif
+
 #include "settings_tab.hpp"
 #include "Settings.hpp"
+#include "helper.hpp"
 #include "button_selecting_dialog.hpp"
 #include "mapping_layout_editor.hpp"
 #include <iomanip>
@@ -40,34 +45,49 @@ SettingsTab::SettingsTab() {
     // Inflate the tab from the XML file
     this->inflateFromXMLRes("xml/tabs/settings.xml");
 
-    std::vector<std::string> resolutions = {"360p", "480p", "720p", "1080p", "Native"};
+    std::vector<std::string> resolutions = {
+        "Native", "360p", "480p", "720p", "1080p", 
+#if !defined(PLATFORM_SWITCH)
+        "1440p"
+#endif
+    };
     resolution->setText("settings/resolution"_i18n);
     resolution->setData(resolutions);
     switch (Settings::instance().resolution()) {
-        GET_SETTINGS(resolution, 360, 0);
-        GET_SETTINGS(resolution, 480, 1);
-        GET_SETTINGS(resolution, 720, 2);
-        GET_SETTINGS(resolution, 1080, 3);
-        GET_SETTINGS(resolution, -1, 4);
+        GET_SETTINGS(resolution, -1, 0);
+        GET_SETTINGS(resolution, 360, 1);
+        GET_SETTINGS(resolution, 480, 2);
+        GET_SETTINGS(resolution, 720, 3);
+        GET_SETTINGS(resolution, 1080, 4);
+        GET_SETTINGS(resolution, 1440, 5);
         DEFAULT;
     }
     resolution->getEvent()->subscribe([](int selected) {
         switch (selected) {
-            SET_SETTING(0, set_resolution(360));
-            SET_SETTING(1, set_resolution(480));
-            SET_SETTING(2, set_resolution(720));
-            SET_SETTING(3, set_resolution(1080));
-            SET_SETTING(4, set_resolution(-1));
+            SET_SETTING(0, set_resolution(-1));
+            SET_SETTING(1, set_resolution(360));
+            SET_SETTING(2, set_resolution(480));
+            SET_SETTING(3, set_resolution(720));
+            SET_SETTING(4, set_resolution(1080));
+            SET_SETTING(5, set_resolution(1440));
             DEFAULT;
         }
     });
 
-    std::vector<std::string> fpss = {"30", "45", "60", "120"};
+    std::vector<std::string> fpss = {
+        "30", 
+        "40", 
+        "60", 
+#if !defined(PLATFORM_SWITCH)
+        "120",
+#endif
+        };
     fps->setText("settings/fps"_i18n);
     fps->setData(fpss);
+    int i = 0;
     switch (Settings::instance().fps()) {
         GET_SETTINGS(fps, 30, 0);
-        GET_SETTINGS(fps, 45, 1);
+        GET_SETTINGS(fps, 40, 1);
         GET_SETTINGS(fps, 60, 2);
         GET_SETTINGS(fps, 120, 3);
         DEFAULT;
@@ -75,7 +95,7 @@ SettingsTab::SettingsTab() {
     fps->getEvent()->subscribe([](int selected) {
         switch (selected) {
             SET_SETTING(0, set_fps(30));
-            SET_SETTING(1, set_fps(45));
+            SET_SETTING(1, set_fps(40));
             SET_SETTING(2, set_fps(60));
             SET_SETTING(3, set_fps(120));
             DEFAULT;
@@ -103,18 +123,42 @@ SettingsTab::SettingsTab() {
         }
     });
 
-    codec->init("settings/video_codec"_i18n,
-                {
-                    "settings/h264"_i18n,
-                    "settings/h265"_i18n,
-            //        "settings/av1"_i18n
-                },
-                Settings::instance().video_codec(), [](int selected) {
-                    Settings::instance().set_video_codec((VideoCodec)selected);
+    std::vector<VideoCodec> supportedCodecs = {
+#ifndef PLATFORM_ANDROID
+        H264,
+#endif
+        H265,
+    };
+
+    std::vector<std::string> supportedCodecNames;
+    for (int i = 0; i < supportedCodecs.size(); i++) {
+        supportedCodecNames.push_back(getVideoCodecName(supportedCodecs[i]));
+    }
+
+    auto it = find(supportedCodecs.begin(), supportedCodecs.end(), Settings::instance().video_codec());
+
+    int selected = 0;
+    if (it != supportedCodecs.end()) {
+        int index = it - supportedCodecs.begin();
+        selected = index;
+    }
+
+    codec->init("settings/video_codec"_i18n, supportedCodecNames,
+                selected, [supportedCodecs](int selected) {
+                    Settings::instance().set_video_codec(supportedCodecs[selected]);
                 });
+
+    requestHdr->init("settings/request_hdr"_i18n, Settings::instance().request_hdr(),
+                     [](bool value) { Settings::instance().set_request_hdr(value); });
+
+ #ifndef SUPPORT_HDR
+    requestHdr->removeFromSuperView(true);
+ #endif
 
     hwDecoding->init("settings/use_hw_decoding"_i18n, Settings::instance().use_hw_decoding(),
                      [](bool value) { Settings::instance().set_use_hw_decoding(value); });
+
+    hwDecoding->setEnabled(false);
 
 #if defined(PLATFORM_SWITCH)
     const float mbpsMaxLimit = 100000;
@@ -281,6 +325,55 @@ SettingsTab::SettingsTab() {
         return true;
     });
 
+#ifndef PLATFORM_SWITCH
+    guideBySystemButton->removeFromSuperView();
+    overlayBySystemButton->removeFromSuperView();
+#else
+    guideBySystemButton->init(
+        "settings/use_system_button"_i18n,
+        {"hints/off"_i18n, "settings/buttons/screenshot"_i18n, "settings/buttons/home"_i18n},
+        (int) Settings::instance().get_guide_system_button(), [this](int value) {
+            if (value != 0 && Settings::instance().get_overlay_system_button() == (ButtonOverrideType) value) {
+                brls::sync([this, value](){
+                    showError("settings/system_button_duplication_error"_i18n, [](){});
+                });
+                guideBySystemButton->setSelection((int) Settings::instance().get_guide_system_button(), true);
+                return;
+            }
+
+            Settings::instance().set_guide_system_button((ButtonOverrideType) value);
+
+            auto color = Settings::instance().get_guide_system_button() == ButtonOverrideType::NONE ?
+                Application::getTheme()["brls/text_disabled"] : Application::getTheme()["brls/accent"];
+            guideBySystemButton->setDetailTextColor(color);
+        });
+    auto color = Settings::instance().get_guide_system_button() == ButtonOverrideType::NONE ?
+         Application::getTheme()["brls/text_disabled"] : Application::getTheme()["brls/accent"];
+    guideBySystemButton->setDetailTextColor(color);
+
+    overlayBySystemButton->init(
+        "settings/use_system_button"_i18n,
+        {"hints/off"_i18n, "settings/buttons/screenshot"_i18n, "settings/buttons/home"_i18n},
+        (int) Settings::instance().get_overlay_system_button(), [this](int value) {
+            if (value != 0 && Settings::instance().get_guide_system_button() == (ButtonOverrideType) value) {
+                brls::sync([this, value](){
+                    showError("settings/system_button_duplication_error"_i18n, [](){});
+                });
+                overlayBySystemButton->setSelection((int) Settings::instance().get_overlay_system_button(), true);
+                return;
+            }
+
+            Settings::instance().set_overlay_system_button((ButtonOverrideType) value);
+
+            auto color = Settings::instance().get_overlay_system_button() == ButtonOverrideType::NONE ?
+                Application::getTheme()["brls/text_disabled"] : Application::getTheme()["brls/accent"];
+            overlayBySystemButton->setDetailTextColor(color);
+        });
+    color = Settings::instance().get_overlay_system_button() == ButtonOverrideType::NONE ?
+         Application::getTheme()["brls/text_disabled"] : Application::getTheme()["brls/accent"];
+    overlayBySystemButton->setDetailTextColor(color);
+#endif
+
     overlayTime->init(
         "settings/overlay_time"_i18n,
         {"settings/overlay_zero_time"_i18n, "1", "2", "3", "4", "5"},
@@ -347,6 +440,27 @@ SettingsTab::SettingsTab() {
         switch (selected) {
             SET_SETTING(0, set_keyboard_type(COMPACT));
             SET_SETTING(1, set_keyboard_type(FULLSIZED));
+            DEFAULT;
+        }
+    });
+
+    std::vector<std::string> keyboardFingersOptions = {
+        "3", "4", "5", "Disabled"};
+    keyboardFingers->setText("settings/keyboard_fingers"_i18n);
+    keyboardFingers->setData(keyboardFingersOptions);
+    switch (Settings::instance().get_keyboard_fingers()) {
+        GET_SETTINGS(keyboardFingers, 3, 0);
+        GET_SETTINGS(keyboardFingers, 4, 1);
+        GET_SETTINGS(keyboardFingers, 5, 2);
+        GET_SETTINGS(keyboardFingers, -1, 3);
+        DEFAULT;
+    }
+    keyboardFingers->getEvent()->subscribe([](int selected) {
+        switch (selected) {
+            SET_SETTING(0, set_keyboard_fingers(3));
+            SET_SETTING(1, set_keyboard_fingers(4));
+            SET_SETTING(2, set_keyboard_fingers(5));
+            SET_SETTING(3, set_keyboard_fingers(-1));
             DEFAULT;
         }
     });

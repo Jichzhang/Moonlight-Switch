@@ -9,8 +9,12 @@
 
 #ifdef BOREALIS_USE_DEKO3D
 #include "DKVideoRenderer.hpp"
-#else
+#elif defined(USE_METAL_RENDERER)
+#include "MetalVideoRenderer.hpp"
+#elif defined(USE_GL_RENDERER)
 #include "GLVideoRenderer.hpp"
+#else
+#error No renderer selected, enable USE_GL_RENDERER or USE_METAL_RENDERER
 #endif
 
 IFFmpegVideoDecoder*
@@ -22,7 +26,9 @@ IVideoRenderer*
 SwitchMoonlightSessionDecoderAndRenderProvider::video_renderer() {
 #ifdef BOREALIS_USE_DEKO3D
     return new DKVideoRenderer();
-#else
+#elif defined(USE_METAL_RENDERER)
+    return new MetalVideoRenderer();
+#elif defined(USE_GL_RENDERER)
     return new GLVideoRenderer();
 #endif
 }

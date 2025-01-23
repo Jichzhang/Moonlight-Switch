@@ -5,6 +5,10 @@
 //  Created by Даниил Виноградов on 27.05.2021.
 //
 
+#ifdef __SWITCH__
+#include <borealis/platforms/switch/switch_input.hpp>
+#endif
+
 #include "streaming_view.hpp"
 #include "InputManager.hpp"
 #include "click_gesture_recognizer.hpp"
@@ -16,7 +20,49 @@
 #include <chrono>
 #include <nanovg.h>
 
+#if defined(__SDL2__)
+#include <SDL2/SDL.h>
+#endif
+
 using namespace brls;
+
+#ifdef PLATFORM_TVOS
+extern void updatePreferredDisplayMode(bool streamActive);
+#endif
+
+void setBottomBarStatus(const char *value) {
+#if defined(__SDL2__)
+    SDL_SetHint(SDL_HINT_IOS_HIDE_HOME_INDICATOR, value);
+#endif
+}
+
+void overrideButtonsIfNeeded(bool value) {
+#ifdef PLATFORM_SWITCH
+    ((SwitchInputManager*) brls::Application::getPlatform()->getInputManager())->setScreenshotButtonOverrideMode(ButtonOverrideMode::NONE);
+    ((SwitchInputManager*) brls::Application::getPlatform()->getInputManager())->setHomeButtonOverrideMode(ButtonOverrideMode::NONE);
+    if (!value) return;
+
+    switch (Settings::instance().get_overlay_system_button()) {
+        case ButtonOverrideType::NONE: break;
+        case ButtonOverrideType::HOME:
+            ((SwitchInputManager*) brls::Application::getPlatform()->getInputManager())->setHomeButtonOverrideMode(ButtonOverrideMode::CUSTOM_EVENT);
+            break;  
+        case ButtonOverrideType::SCREENSHOT:
+            ((SwitchInputManager*) brls::Application::getPlatform()->getInputManager())->setScreenshotButtonOverrideMode(ButtonOverrideMode::CUSTOM_EVENT);
+            break;
+    }
+
+    switch (Settings::instance().get_guide_system_button()) {
+        case ButtonOverrideType::NONE: break;
+        case ButtonOverrideType::HOME:
+            ((SwitchInputManager*) brls::Application::getPlatform()->getInputManager())->setHomeButtonOverrideMode(ButtonOverrideMode::GUIDE_BUTTON);
+            break;  
+        case ButtonOverrideType::SCREENSHOT:
+            ((SwitchInputManager*) brls::Application::getPlatform()->getInputManager())->setScreenshotButtonOverrideMode(ButtonOverrideMode::GUIDE_BUTTON);
+            break;
+    }
+#endif
+}
 
 StreamingView::StreamingView(const Host& host, const AppInfo& app) : host(host), app(app) {
     Application::getPlatform()->disableScreenDimming(true);
@@ -32,6 +78,10 @@ StreamingView::StreamingView(const Host& host, const AppInfo& app) : host(host),
     addView(keyboardHolder);
 
     session = new MoonlightSession(host.address, app.app_id);
+
+#ifdef PLATFORM_TVOS
+        updatePreferredDisplayMode(true);
+#endif
 
     ASYNC_RETAIN
     GameStreamClient::instance().connect(
@@ -57,8 +107,9 @@ StreamingView::StreamingView(const Host& host, const AppInfo& app) : host(host),
 
     static bool lMouseKeyGate = false;
     static bool lMouseKeyUsed = false;
-    addGestureRecognizer(
-        new FingersGestureRecognizer(3, [this] { addKeyboard(); }));
+    addGestureRecognizer(new FingersGestureRecognizer([](){
+                             return Settings::instance().get_keyboard_fingers();
+                         }, [this] { addKeyboard(); }));
 
     addGestureRecognizer(
         new ClickGestureRecognizer(1, [](TapGestureStatus status) {
@@ -198,6 +249,9 @@ void StreamingView::onFocusGained() {
     });
 
     Application::getPlatform()->getInputManager()->setPointerLock(true);
+
+    overrideButtonsIfNeeded(true);
+    setBottomBarStatus("1");
 }
 
 void StreamingView::onFocusLost() {
@@ -213,6 +267,12 @@ void StreamingView::onFocusLost() {
 
     removeKeyboard();
     Application::getPlatform()->getInputManager()->setPointerLock(false);
+
+    overrideButtonsIfNeeded(false);
+    setBottomBarStatus("2");
+
+    if (bottombarDelayTask != -1)
+        cancelDelay(bottombarDelayTask);
 }
 
 void StreamingView::draw(NVGcontext* vg, float x, float y, float width,
@@ -244,6 +304,14 @@ void StreamingView::draw(NVGcontext* vg, float x, float y, float width,
         nvgText(vg, 50, height - 28, "\uE140 Bad connection...", nullptr);
     }
 
+    if (session->use_hdr() != m_use_hdr) {
+        m_use_hdr = session->use_hdr();
+
+#ifdef PLATFORM_TVOS
+        updatePreferredDisplayMode(true);
+#endif
+    }
+
     if (draw_stats) {
         static char output[1024];
         int offset = 0;
@@ -261,12 +329,12 @@ void StreamingView::draw(NVGcontext* vg, float x, float y, float width,
 
         offset += sprintf(
             &output[offset],
-            "Frames dropped by your network connection: %.2f%% (Total: %u)\n"
+            "Frames dropped by your network connection: %u\n"
             "Average receive time: %.2f ms\n"
             "Average decoding time: %.2f ms\n"
             "Average rendering time: %.2f ms\n",
-            (float)stats->video_decode_stats.network_dropped_frames /
-                stats->video_decode_stats.total_frames * 100,
+            // (float)stats->video_decode_stats.network_dropped_frames / // removed % of dropped frames
+            //     stats->video_decode_stats.total_frames * 100,
             stats->video_decode_stats.network_dropped_frames,
             (float)stats->video_decode_stats.total_reassembly_time /
                 stats->video_decode_stats.received_frames,
@@ -351,6 +419,20 @@ void StreamingView::handleInput() {
     } else {
         MoonlightInputManager::instance().handleInput();
     }
+
+    if (Application::currentTouchState.size() > 0) {
+        setBottomBarStatus("2");
+
+        if (bottombarDelayTask != -1)
+            cancelDelay(bottombarDelayTask);
+
+        ASYNC_RETAIN
+        bottombarDelayTask = delay(3000, [ASYNC_TOKEN]() {
+            ASYNC_RELEASE
+            setBottomBarStatus("1");
+            bottombarDelayTask = -1;
+        });
+    }
 }
 
 void StreamingView::handleOverlayCombo() {
@@ -387,6 +469,24 @@ void StreamingView::handleOverlayCombo() {
         auto overlay = new IngameOverlay(this);
         Application::pushActivity(new Activity(overlay));
     }
+
+#ifdef PLATFORM_SWITCH
+    static bool oldSystemButtonOverlayPressed = false;
+    bool systemButtonOverlayPressed = false;
+    if (Settings::instance().get_overlay_system_button() == ButtonOverrideType::HOME)
+        systemButtonOverlayPressed |= ((SwitchInputManager*) Application::getPlatform()->getInputManager())->isHomeButtonPressed();
+
+    if (Settings::instance().get_overlay_system_button() == ButtonOverrideType::SCREENSHOT)
+        systemButtonOverlayPressed |= ((SwitchInputManager*) Application::getPlatform()->getInputManager())->isScreenshotButtonPressed();
+
+    if (oldSystemButtonOverlayPressed != systemButtonOverlayPressed) {
+        oldSystemButtonOverlayPressed = systemButtonOverlayPressed;
+        if (systemButtonOverlayPressed) {
+            auto overlay = new IngameOverlay(this);
+            Application::pushActivity(new Activity(overlay));
+        }
+    }
+#endif
 }
 
 void StreamingView::handleMouseInputCombo() {
@@ -439,6 +539,10 @@ void StreamingView::onLayout() {
 }
 
 StreamingView::~StreamingView() {
+#ifdef PLATFORM_TVOS
+    updatePreferredDisplayMode(false);
+#endif
+    
     Application::getPlatform()->disableScreenDimming(false);
     Application::getPlatform()
         ->getInputManager()
